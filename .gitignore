@@ -1,0 +1,9 @@
+*.env
+*.txt
+*.crt
+*.key
+*.pem
+*.json
+*.conf
+*.rdb
+*.cf
