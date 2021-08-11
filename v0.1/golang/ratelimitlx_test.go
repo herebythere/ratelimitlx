@@ -176,7 +176,7 @@ func TestLimitOfFifteenSeconds(t *testing.T) {
 			15,
 			2,
 		)
-		
+
 		hasBeenLimited = !passedLimit
 
 		iteration += 1
