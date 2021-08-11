@@ -1,19 +1,28 @@
 package ratelimitlx
 
 import (
+	"os"
 	"testing"
 )
 
 const (
-	testRateLimiter   = "rate_limiter_test"
+	testRateLimiter   = "rate_limiter_interface_test"
 	testIdentifier    = "test_identifier"
 	altTestIdentifier = "alt_test_identifier"
 	testAddress       = "address_test"
 )
 
+var (
+	localCacheAddress = os.Getenv("LOCAL_CACHE_ADDRESS")
+	// localCacheAddress = "http://10.88.0.1:6050"
+)
+
 func TestExecInstructionsAndParseInt64(t *testing.T) {
-	instructions := []interface{}{hincrby, testRateLimiter, testAddress, 1}
-	count, errCount := execInstructionsAndParseInt64(&instructions)
+	instructions := []interface{}{incrCache, testRateLimiter}
+	count, errCount := execInstructionsAndParseInt64(
+		localCacheAddress,
+		&instructions,
+	)
 	if errCount != nil {
 		t.Fail()
 		t.Logf(errCount.Error())
@@ -22,7 +31,7 @@ func TestExecInstructionsAndParseInt64(t *testing.T) {
 		t.Fail()
 		t.Logf("increment was not successfuul")
 	}
-	if *count < 1 {
+	if count != nil && *count < 1 {
 		t.Fail()
 		t.Logf("increment was less than 1, which means key might be occupied by non integer")
 	}
@@ -160,31 +169,29 @@ func TestLimitOfFifteenSeconds(t *testing.T) {
 	iteration := 0
 	for iteration < testLimitInt {
 		passedLimit, errLimited := Limit(
+			localCacheAddress,
 			testRateLimiter,
 			altTestIdentifier,
 			testLimit,
 			15,
 			2,
 		)
+		
+		hasBeenLimited = !passedLimit
 
 		iteration += 1
 		if errLimited != nil {
 			errHasBeenLimited = errLimited
 			break
 		}
-		if !passedLimit {
-			hasBeenLimited = true
-			break
-		}
-
 	}
 
-	if errHasBeenLimited != nil {
+	if errHasBeenLimited == nil {
 		t.Fail()
 		t.Logf(errHasBeenLimited.Error())
 	}
 	if !hasBeenLimited {
 		t.Fail()
-		t.Logf("sliding window of fifteen seconds should deny 30 increments in 15 seconds with a limit of 10")
+		t.Logf("sliding window of fifteen seconds should deny 11 increments in 15 seconds with a limit of 10")
 	}
 }

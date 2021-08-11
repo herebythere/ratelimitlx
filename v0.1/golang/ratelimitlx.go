@@ -6,23 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 )
 
 const (
-	applicationJson      = "application/json"
-	hset                 = "HSET"
-	hget                 = "HGET"
-	hincrby              = "HINCRBY"
-	unableToWriteToCache = "unable to write jwt to cache"
-	ratelimits           = "rate_limits"
-	colonDelimiter       = ":"
+	applicationJson = "application/json"
+	getCache        = "GET"
+	incrCache       = "INCR"
+	ratelimits      = "rate_limits"
+	colonDelimiter  = ":"
 )
 
 var (
-	localCacheAddress = os.Getenv("LOCAL_CACHE_ADDRESS")
-
 	errInstructionsAreNil       = errors.New("instructions are nil")
 	errRequestToCacheFailed     = errors.New("request to local cache failed")
 	errInstructionsFailed       = errors.New("instructions failed")
@@ -34,8 +29,12 @@ func getCacheSetID(categories ...string) string {
 }
 
 func execInstructionsAndParseInt64(
+	cacheAddress string,
 	instructions *[]interface{},
-) (*int64, error) {
+) (
+	*int64,
+	error,
+) {
 	if instructions == nil {
 		return nil, errInstructionsAreNil
 	}
@@ -46,14 +45,13 @@ func execInstructionsAndParseInt64(
 		return nil, errJson
 	}
 
-	resp, errResp := http.Post(localCacheAddress, applicationJson, bodyBytes)
+	resp, errResp := http.Post(cacheAddress, applicationJson, bodyBytes)
 	if errResp != nil {
 		return nil, errResp
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-
 		return nil, errRequestToCacheFailed
 	}
 
@@ -111,8 +109,11 @@ func slidingWindowLimit(
 func getIntervals(
 	identifier string,
 	currentTime int64,
-	interval int64, // by seconds
-) (*string, *string) {
+	interval int64,
+) (
+	*string,
+	*string,
+) {
 	currentInterval := currentTime / interval
 	currIntervalID := getCacheSetID(
 		identifier,
@@ -129,28 +130,51 @@ func getIntervals(
 }
 
 func Limit(
+	cacheAddress string,
 	serverName string,
 	identifier string,
 	limit int64,
-	intervalWindow int64, // by seconds
+	intervalWindow int64,
 	currentTime int64,
-) (bool, error) {
+) (
+	bool,
+	error,
+) {
 	prevIntervalID, currIntervalID := getIntervals(
 		serverName,
 		intervalWindow,
 		currentTime,
 	)
 
-	setID := getCacheSetID(serverName, ratelimits)
-
-	incrCurrCount := []interface{}{hincrby, setID, currIntervalID, 1}
-	currCount, errCurrCount := execInstructionsAndParseInt64(&incrCurrCount)
+	currSetID := getCacheSetID(
+		serverName,
+		ratelimits,
+		identifier,
+		*currIntervalID,
+	)
+	incrCurrCount := []interface{}{incrCache, currSetID}
+	currCount, errCurrCount := execInstructionsAndParseInt64(
+		cacheAddress,
+		&incrCurrCount,
+	)
 	if errCurrCount != nil {
 		return false, errCurrCount
 	}
+	if *currCount >= limit {
+		return false, errCurrIntervalIsAboveLimit
+	}
 
-	getPrevCount := []interface{}{hget, setID, prevIntervalID}
-	prevCount, errPrevCount := execInstructionsAndParseInt64(&getPrevCount)
+	prevSetID := getCacheSetID(
+		serverName,
+		ratelimits,
+		identifier,
+		*prevIntervalID,
+	)
+	getPrevCount := []interface{}{getCache, prevSetID}
+	prevCount, errPrevCount := execInstructionsAndParseInt64(
+		cacheAddress,
+		&getPrevCount,
+	)
 	if errPrevCount != nil {
 		return false, errPrevCount
 	}
@@ -167,5 +191,5 @@ func Limit(
 		return true, nil
 	}
 
-	return false, nil
+	return false, errCurrIntervalIsAboveLimit
 }
