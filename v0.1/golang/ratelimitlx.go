@@ -131,7 +131,6 @@ func getIntervals(
 
 func Limit(
 	cacheAddress string,
-	serverName string,
 	identifier string,
 	limit int64,
 	intervalWindow int64,
@@ -141,13 +140,12 @@ func Limit(
 	error,
 ) {
 	prevIntervalID, currIntervalID := getIntervals(
-		serverName,
+		identifier,
 		intervalWindow,
 		currentTime,
 	)
 
 	currSetID := getCacheSetID(
-		serverName,
 		ratelimits,
 		identifier,
 		*currIntervalID,
@@ -165,7 +163,6 @@ func Limit(
 	}
 
 	prevSetID := getCacheSetID(
-		serverName,
 		ratelimits,
 		identifier,
 		*prevIntervalID,

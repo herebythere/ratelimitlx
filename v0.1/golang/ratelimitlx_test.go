@@ -7,14 +7,12 @@ import (
 
 const (
 	testRateLimiter   = "rate_limiter_interface_test"
-	testIdentifier    = "test_identifier"
 	altTestIdentifier = "alt_test_identifier"
 	testAddress       = "address_test"
 )
 
 var (
 	localCacheAddress = os.Getenv("LOCAL_CACHE_ADDRESS")
-	// localCacheAddress = "http://10.88.0.1:6050"
 )
 
 func TestExecInstructionsAndParseInt64(t *testing.T) {
@@ -171,7 +169,6 @@ func TestLimitOfFifteenSeconds(t *testing.T) {
 		passedLimit, errLimited := Limit(
 			localCacheAddress,
 			testRateLimiter,
-			altTestIdentifier,
 			testLimit,
 			15,
 			2,
