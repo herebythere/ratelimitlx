@@ -1,70 +1,30 @@
 package ratelimitlx
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
+
+	sclx "github.com/herebythere/supercachelx/v0.1/golang"
 )
 
 const (
-	applicationJson = "application/json"
-	getCache        = "GET"
-	incrCache       = "INCR"
-	ratelimits      = "rate_limits"
-	colonDelimiter  = ":"
+	expireCache         = "EXPIRE"
+	getCache            = "GET"
+	incrCache           = "INCR"
+	ratelimits          = "rate_limits"
+	colonDelimiter      = ":"
+	threeHoursInSeconds = 10800
+	okCache             = "OK"
 )
 
 var (
-	errInstructionsAreNil       = errors.New("instructions are nil")
-	errRequestToCacheFailed     = errors.New("request to local cache failed")
-	errInstructionsFailed       = errors.New("instructions failed")
 	errCurrIntervalIsAboveLimit = errors.New("current interval is above limit")
+	errExpiryFailed             = errors.New("setting expiry failed")
 )
 
 func getCacheSetID(categories ...string) string {
 	return strings.Join(categories, colonDelimiter)
-}
-
-func execInstructionsAndParseInt64(
-	cacheAddress string,
-	instructions *[]interface{},
-) (
-	*int64,
-	error,
-) {
-	if instructions == nil {
-		return nil, errInstructionsAreNil
-	}
-
-	bodyBytes := new(bytes.Buffer)
-	errJson := json.NewEncoder(bodyBytes).Encode(*instructions)
-	if errJson != nil {
-		return nil, errJson
-	}
-
-	resp, errResp := http.Post(cacheAddress, applicationJson, bodyBytes)
-	if errResp != nil {
-		return nil, errResp
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, errRequestToCacheFailed
-	}
-
-	var count int64
-	errCount := json.NewDecoder(resp.Body).Decode(&count)
-	if errCount != nil {
-		return nil, errCount
-	}
-	if &count != nil {
-		return &count, nil
-	}
-
-	return nil, errInstructionsFailed
 }
 
 func minInt(x, y int64) int64 {
@@ -129,6 +89,25 @@ func getIntervals(
 	return &prevIntervalID, &currIntervalID
 }
 
+func expireInterval(
+	cacheAddress string,
+	itervalID string,
+) error {
+	expCurrent := []interface{}{expireCache, itervalID, threeHoursInSeconds}
+	expSuccess, errExp := sclx.ExecInstructionsAndParseString(
+		cacheAddress,
+		&expCurrent,
+	)
+	if errExp != nil {
+		return errExp
+	}
+	if (*expSuccess) == okCache {
+		return nil
+	}
+
+	return errExpiryFailed
+}
+
 func Limit(
 	cacheAddress string,
 	identifier string,
@@ -146,12 +125,14 @@ func Limit(
 	)
 
 	currSetID := getCacheSetID(
-		ratelimits,
 		identifier,
+		ratelimits,
 		*currIntervalID,
 	)
+
+	// increment
 	incrCurrCount := []interface{}{incrCache, currSetID}
-	currCount, errCurrCount := execInstructionsAndParseInt64(
+	currCount, errCurrCount := sclx.ExecInstructionsAndParseInt64(
 		cacheAddress,
 		&incrCurrCount,
 	)
@@ -162,13 +143,23 @@ func Limit(
 		return false, errCurrIntervalIsAboveLimit
 	}
 
+	// set increment expiry
+	errExpiry := expireInterval(
+		cacheAddress,
+		currSetID,
+	)
+	if errExpiry != nil {
+		return false, errExpiry
+	}
+
+	// validate bucket if needed
 	prevSetID := getCacheSetID(
-		ratelimits,
 		identifier,
+		ratelimits,
 		*prevIntervalID,
 	)
 	getPrevCount := []interface{}{getCache, prevSetID}
-	prevCount, errPrevCount := execInstructionsAndParseInt64(
+	prevCount, errPrevCount := sclx.ExecInstructionsAndParseInt64(
 		cacheAddress,
 		&getPrevCount,
 	)

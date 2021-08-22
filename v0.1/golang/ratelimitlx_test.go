@@ -3,6 +3,8 @@ package ratelimitlx
 import (
 	"os"
 	"testing"
+
+	sclx "github.com/herebythere/supercachelx/v0.1/golang"
 )
 
 const (
@@ -13,11 +15,12 @@ const (
 
 var (
 	localCacheAddress = os.Getenv("LOCAL_CACHE_ADDRESS")
+	// localCacheAddress = "http://10.88.0.1:1234"
 )
 
 func TestExecInstructionsAndParseInt64(t *testing.T) {
 	instructions := []interface{}{incrCache, testRateLimiter}
-	count, errCount := execInstructionsAndParseInt64(
+	count, errCount := sclx.ExecInstructionsAndParseInt64(
 		localCacheAddress,
 		&instructions,
 	)
@@ -31,7 +34,7 @@ func TestExecInstructionsAndParseInt64(t *testing.T) {
 	}
 	if count != nil && *count < 1 {
 		t.Fail()
-		t.Logf("increment was less than 1, which means key might be occupied by non integer")
+		t.Logf("increment was less than 1, which means nothing was incrmented")
 	}
 }
 
